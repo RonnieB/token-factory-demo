@@ -1,0 +1,5 @@
+target/
+server.log
+curl-cookies.txt
+.idea/
+*.iml
