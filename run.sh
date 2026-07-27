@@ -17,8 +17,8 @@ echo "==> Building and running unit tests"
 mvn -q clean package | tee "$BUILD_LOG"
 
 echo
-echo "==> The tests printed the token before and after encryption:"
-sed -n '/JWT before encryption/,/^$/p;/JWT after encryption/,/^$/p' "$BUILD_LOG"
+echo "==> The tests printed the token before and after encryption (signed claims decoded):"
+awk '/--- JWT before encryption/{f=1} f{print} /--- JWT after encryption/{getline; print; exit}' "$BUILD_LOG"
 
 echo "==> Starting server on port $PORT"
 java -jar target/token-factory-demo-1.0.0.jar >server.log 2>&1 &

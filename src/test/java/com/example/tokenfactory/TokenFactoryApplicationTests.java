@@ -3,6 +3,9 @@ package com.example.tokenfactory;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -28,16 +31,26 @@ class TokenFactoryApplicationTests {
     TokenFactory tokenFactory;
 
     @Test
-    void printsTheTokenBeforeAndAfterEncryption() {
+    void printsTheTokenBeforeAndAfterEncryption() throws Exception {
         TokenFactory.Nested token = tokenFactory.createNestedToken("alice");
+        String[] parts = token.signed().split("\\.");
 
-        System.out.println("\n--- JWT before encryption (signed JWS, 3 parts, base64 claims are readable) ---");
+        System.out.println("\n--- JWT before encryption (signed JWS, 3 parts) ---");
         System.out.println(token.signed());
+        System.out.println("\n  decoded header:  " + decode(parts[0]));
+        System.out.println("  decoded claims:  " + decode(parts[1]));
         System.out.println("\n--- JWT after encryption (nested JWE, 5 parts, contents are opaque) ---");
         System.out.println(token.encrypted() + "\n");
 
-        assertThat(token.signed().split("\\.")).hasSize(3);
+        assertThat(parts).hasSize(3);
         assertThat(token.encrypted().split("\\.")).hasSize(5);
+    }
+
+    /** Base64url-decodes one part of a JWS and pretty-prints the JSON it contains. */
+    private String decode(String jwsPart) throws Exception {
+        String jsonText = new String(Base64.getUrlDecoder().decode(jwsPart), StandardCharsets.UTF_8);
+        return json.writerWithDefaultPrettyPrinter().writeValueAsString(json.readTree(jsonText))
+                .replace("\n", "\n                   "); // indent under the label
     }
 
     private MvcResult issue(String user) throws Exception {

@@ -42,8 +42,9 @@ Signing proves who issued the token; encryption keeps its contents secret in tra
 and at rest on the client. Two separate RSA key pairs are used — signing and
 encryption — which mirrors real deployments where the sender signs and the recipient
 decrypts (algorithms: `RS256` for the signature, `RSA-OAEP-256` + `A256GCM` for the
-encryption). The unit tests print the token **before and after encryption** so you can
-see the readable JWS become an opaque JWE; `./run.sh` surfaces that printout.
+encryption). The unit tests print the token **before and after encryption** — the
+signed JWS is decoded into its human-readable header and claims, next to the opaque
+JWE it turns into; `./run.sh` surfaces that printout.
 
 ## Expiry and refresh
 
