@@ -35,10 +35,9 @@ class TokenFactoryApplicationTests {
         TokenFactory.Nested token = tokenFactory.createNestedToken("alice");
         String[] parts = token.signed().split("\\.");
 
-        System.out.println("\n--- JWT before encryption (signed JWS, 3 parts) ---");
-        System.out.println(token.signed());
-        System.out.println("\n  decoded header:  " + decode(parts[0]));
-        System.out.println("  decoded claims:  " + decode(parts[1]));
+        System.out.println("\n--- JWT before encryption (signed JWS, decoded to readable JSON) ---");
+        System.out.println("  header:  " + decode(parts[0]));
+        System.out.println("  claims:  " + decode(parts[1]));
         System.out.println("\n--- JWT after encryption (nested JWE, 5 parts, contents are opaque) ---");
         System.out.println(token.encrypted() + "\n");
 
@@ -50,7 +49,7 @@ class TokenFactoryApplicationTests {
     private String decode(String jwsPart) throws Exception {
         String jsonText = new String(Base64.getUrlDecoder().decode(jwsPart), StandardCharsets.UTF_8);
         return json.writerWithDefaultPrettyPrinter().writeValueAsString(json.readTree(jsonText))
-                .replace("\n", "\n                   "); // indent under the label
+                .replace("\n", "\n           "); // indent under the label
     }
 
     private MvcResult issue(String user) throws Exception {
