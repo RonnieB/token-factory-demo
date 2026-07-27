@@ -11,14 +11,19 @@ cd "$(dirname "$0")"
 PORT=8080
 BASE="http://localhost:$PORT"
 JAR="curl-cookies.txt"
+BUILD_LOG="build.log"
 
 echo "==> Building and running unit tests"
-mvn -q clean package
+mvn -q clean package | tee "$BUILD_LOG"
+
+echo
+echo "==> The tests printed the token before and after encryption:"
+sed -n '/JWT before encryption/,/^$/p;/JWT after encryption/,/^$/p' "$BUILD_LOG"
 
 echo "==> Starting server on port $PORT"
 java -jar target/token-factory-demo-1.0.0.jar >server.log 2>&1 &
 SERVER_PID=$!
-trap 'kill $SERVER_PID 2>/dev/null || true; rm -f $JAR' EXIT
+trap 'kill $SERVER_PID 2>/dev/null || true; rm -f $JAR $BUILD_LOG' EXIT
 
 # A 302 to /refresh from the protected endpoint means the server is up and secured
 for _ in $(seq 30); do
@@ -30,12 +35,12 @@ echo "==> Issuing a token for user 'alice' (cookies saved to the jar)"
 curl -s -c "$JAR" -X POST "$BASE/tokens?user=alice"
 echo
 
-echo "==> Decoding the access token payload"
+echo "==> The access token is now a nested JWT (signed then encrypted), so it is opaque to the client"
 TOKEN=$(grep access_token "$JAR" | awk '{print $NF}')
-PAYLOAD=$(echo "$TOKEN" | cut -d. -f2)
-python3 -c "import base64,json,sys; s=sys.argv[1]; print(json.dumps(json.loads(base64.urlsafe_b64decode(s + '=' * (-len(s) % 4))), indent=2))" "$PAYLOAD"
+echo "Compact parts: $(echo "$TOKEN" | awk -F. '{print NF}') (a JWE has 5; a plain signed JWT would have 3)"
+echo "Only the server, holding the encryption private key, can read it — the client just carries it."
 
-echo "==> Calling /me while the token is fresh"
+echo "==> Calling /me while the token is fresh (the server decrypts and verifies it)"
 curl -s -b "$JAR" "$BASE/me"; echo
 
 echo "==> Showing the raw 302 the server sends once the token has expired"

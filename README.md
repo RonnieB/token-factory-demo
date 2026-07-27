@@ -4,14 +4,22 @@ A minimal example of how little code it takes to mint and consume JWTs with Spri
 
 Two pieces:
 
-1. **Token factory** — creates a signed JWT from nothing but a user name.
+1. **Token factory** — creates a **signed and encrypted** JWT from nothing but a user name.
 2. **Server component** — a protected endpoint that answers with the user name and
-   the accounts carried in the token. Spring Security validates the signature and
-   expiry before the controller ever runs.
+   the accounts carried in the token. Spring Security decrypts, verifies the signature,
+   and checks expiry before the controller ever runs.
 
-## The token
+## The token — signed, then encrypted (a nested JWT)
 
-`POST /tokens?user=alice` returns a JWT whose payload looks like this:
+The factory builds the token in two stages:
+
+1. **Sign** the claims with the signing private key, producing a JWS (a normal signed
+   JWT — three dot-separated parts whose payload is readable base64).
+2. **Encrypt** that whole signed JWT with the encryption public key, producing a JWE
+   (five dot-separated parts). This is the "nested JWT" the client receives; its
+   contents are opaque.
+
+The claims inside are:
 
 ```json
 {
@@ -29,6 +37,13 @@ Two pieces:
 
 The `clientId` claim is the user name you asked for. Two accounts are added, each
 with a random six-digit `accountId`. The token lives for **10 seconds** (`exp - iat`).
+
+Signing proves who issued the token; encryption keeps its contents secret in transit
+and at rest on the client. Two separate RSA key pairs are used — signing and
+encryption — which mirrors real deployments where the sender signs and the recipient
+decrypts (algorithms: `RS256` for the signature, `RSA-OAEP-256` + `A256GCM` for the
+encryption). The unit tests print the token **before and after encryption** so you can
+see the readable JWS become an opaque JWE; `./run.sh` surfaces that printout.
 
 ## Expiry and refresh
 
@@ -61,11 +76,11 @@ Once the refresh token itself expires, `/refresh` returns 401 and the client mus
 ./run.sh
 ```
 
-The script builds the project, runs the unit tests, starts the server, issues a
-token, decodes and prints its payload, calls the protected endpoint while the
-token is fresh, waits 11 seconds for it to expire, shows the raw 302 the server
-returns, and finally calls again with `curl -L` so the refresh redirect resolves
-automatically.
+The script builds the project and runs the unit tests (which print the token before
+and after encryption), starts the server, issues a token, shows that the access
+token is an opaque 5-part JWE, calls the protected endpoint while the token is fresh,
+waits 11 seconds for it to expire, shows the raw 302 the server returns, and finally
+calls again with `curl -L` so the refresh redirect resolves automatically.
 
 Manually, using a cookie jar as the client:
 
@@ -81,9 +96,9 @@ curl -s -c jar.txt -X POST 'http://localhost:8080/tokens?user=alice'; curl -s -L
 
 | File | Role |
 | --- | --- |
-| [TokenFactory.java](src/main/java/com/example/tokenfactory/TokenFactory.java) | Builds the claims and signs the 10s token via `JwtEncoder` |
+| [TokenFactory.java](src/main/java/com/example/tokenfactory/TokenFactory.java) | Signs the claims, then encrypts the result (nested JWT) |
 | [RefreshTokenStore.java](src/main/java/com/example/tokenfactory/RefreshTokenStore.java) | Issues and looks up opaque refresh tokens |
-| [JwtConfig.java](src/main/java/com/example/tokenfactory/JwtConfig.java) | RSA key pair, `JwtEncoder` and `JwtDecoder` beans |
+| [JwtConfig.java](src/main/java/com/example/tokenfactory/JwtConfig.java) | Signing + encryption key pairs, `JwtEncoder` and a decrypt-then-verify `JwtDecoder` |
 | [SecurityConfig.java](src/main/java/com/example/tokenfactory/SecurityConfig.java) | Cookie bearer resolver + 302-on-expiry entry point |
 | [Cookies.java](src/main/java/com/example/tokenfactory/Cookies.java) | Reads and writes the access/refresh cookies |
 | [TokenController.java](src/main/java/com/example/tokenfactory/TokenController.java) | `POST /tokens` — issues the token pair as cookies |
@@ -92,7 +107,7 @@ curl -s -c jar.txt -X POST 'http://localhost:8080/tokens?user=alice'; curl -s -L
 
 ## Not production ready
 
-The RSA key pair and the refresh-token store both live in memory, so every restart
+The RSA key pairs and the refresh-token store all live in memory, so every restart
 invalidates all previously issued tokens and a second instance cannot honor the
 first one's. The token endpoint is unauthenticated and hands a pair to anyone who
 asks — there is no user authentication at all. The cookies are `HttpOnly` but not

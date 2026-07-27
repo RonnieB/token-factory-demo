@@ -24,6 +24,22 @@ class TokenFactoryApplicationTests {
     @Autowired
     ObjectMapper json;
 
+    @Autowired
+    TokenFactory tokenFactory;
+
+    @Test
+    void printsTheTokenBeforeAndAfterEncryption() {
+        TokenFactory.Nested token = tokenFactory.createNestedToken("alice");
+
+        System.out.println("\n--- JWT before encryption (signed JWS, 3 parts, base64 claims are readable) ---");
+        System.out.println(token.signed());
+        System.out.println("\n--- JWT after encryption (nested JWE, 5 parts, contents are opaque) ---");
+        System.out.println(token.encrypted() + "\n");
+
+        assertThat(token.signed().split("\\.")).hasSize(3);
+        assertThat(token.encrypted().split("\\.")).hasSize(5);
+    }
+
     private MvcResult issue(String user) throws Exception {
         return mvc.perform(post("/tokens").param("user", user))
                 .andExpect(status().isOk())
