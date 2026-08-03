@@ -31,18 +31,14 @@ class TokenFactoryApplicationTests {
     TokenFactory tokenFactory;
 
     @Test
-    void printsTheTokenBeforeAndAfterEncryption() throws Exception {
-        TokenFactory.Nested token = tokenFactory.createNestedToken("alice");
-        String[] parts = token.signed().split("\\.");
+    void printsTheSignedTokenDecoded() throws Exception {
+        String[] parts = tokenFactory.createToken("alice").split("\\.");
 
-        System.out.println("\n--- JWT before encryption (signed JWS, decoded to readable JSON) ---");
+        System.out.println("\n--- Signed JWT, decoded to readable JSON ---");
         System.out.println("  header:  " + decode(parts[0]));
-        System.out.println("  claims:  " + decode(parts[1]));
-        System.out.println("\n--- JWT after encryption (nested JWE, 5 parts, contents are opaque) ---");
-        System.out.println(token.encrypted() + "\n");
+        System.out.println("  claims:  " + decode(parts[1]) + "\n");
 
         assertThat(parts).hasSize(3);
-        assertThat(token.encrypted().split("\\.")).hasSize(5);
     }
 
     /** Base64url-decodes one part of a JWS and pretty-prints the JSON it contains. */

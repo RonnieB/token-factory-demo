@@ -17,8 +17,8 @@ echo "==> Building and running unit tests"
 mvn -q clean package | tee "$BUILD_LOG"
 
 echo
-echo "==> The tests printed the token before and after encryption (signed claims decoded):"
-awk '/--- JWT before encryption/{f=1} f{print} /--- JWT after encryption/{getline; print; exit}' "$BUILD_LOG"
+echo "==> The tests decoded and printed the signed token:"
+awk '/--- Signed JWT, decoded/{f=1} f{print} /^ *}$/{if(f)c++} c==2{exit}' "$BUILD_LOG"
 
 echo "==> Starting server on port $PORT"
 java -jar target/token-factory-demo-1.0.0.jar >server.log 2>&1 &
@@ -35,12 +35,12 @@ echo "==> Issuing a token for user 'alice' (cookies saved to the jar)"
 curl -s -c "$JAR" -X POST "$BASE/tokens?user=alice"
 echo
 
-echo "==> The access token is now a nested JWT (signed then encrypted), so it is opaque to the client"
+echo "==> Decoding the access token payload from the cookie"
 TOKEN=$(grep access_token "$JAR" | awk '{print $NF}')
-echo "Compact parts: $(echo "$TOKEN" | awk -F. '{print NF}') (a JWE has 5; a plain signed JWT would have 3)"
-echo "Only the server, holding the encryption private key, can read it — the client just carries it."
+PAYLOAD=$(echo "$TOKEN" | cut -d. -f2)
+python3 -c "import base64,json,sys; s=sys.argv[1]; print(json.dumps(json.loads(base64.urlsafe_b64decode(s + '=' * (-len(s) % 4))), indent=2))" "$PAYLOAD"
 
-echo "==> Calling /me while the token is fresh (the server decrypts and verifies it)"
+echo "==> Calling /me while the token is fresh (the server verifies its signature)"
 curl -s -b "$JAR" "$BASE/me"; echo
 
 echo "==> Showing the raw 302 the server sends once the token has expired"
