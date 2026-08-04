@@ -32,8 +32,8 @@ for _ in $(seq 30); do
 done
 
 echo "==> Issuing a token for user 'alice' (cookies saved to the jar)"
-curl -s -c "$JAR" -X POST "$BASE/tokens?user=alice"
-echo
+curl -s -c "$JAR" -o /dev/null -X POST "$BASE/tokens?user=alice"
+echo "Access and refresh cookies stored."
 
 echo "==> Decoding the access token payload from the cookie"
 TOKEN=$(grep access_token "$JAR" | awk '{print $NF}')
