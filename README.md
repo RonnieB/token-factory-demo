@@ -33,6 +33,19 @@ with a random six-digit `accountId`. The token lives for **10 seconds** (`exp - 
 The unit tests decode the signed token and print its header and claims as readable
 JSON; `./run.sh` surfaces that printout.
 
+### Optional encryption
+
+Pass `encrypt` to the run script (`./run.sh encrypt`, which sets
+`demo.encrypt-tokens=true`) to wrap the signed JWT in a JWE — a **nested JWT** whose
+contents are opaque to the client. The server decrypts it and then verifies the
+signature before the controller runs.
+
+Encryption uses **direct symmetric encryption** (`dir` + `A128GCM`) with an in-memory
+AES key, deliberately chosen so the token barely grows: `dir` carries no wrapped
+content-encryption key, so the only overhead is a small header, a 12-byte IV and a
+16-byte tag. (RSA-OAEP key wrapping would have added ~340 characters for the wrapped
+key alone — a real cost when JWT size is limited.)
+
 ## Expiry and refresh
 
 Both tokens are returned as `HttpOnly` cookies so the client resends them automatically:
@@ -70,6 +83,15 @@ protected endpoint while the token is fresh, waits 11 seconds for it to expire, 
 the raw 302 the server returns, and finally calls again with `curl -L` so the refresh
 redirect resolves automatically.
 
+Add `encrypt` to turn on the optional encryption layer described above:
+
+```bash
+./run.sh encrypt
+```
+
+The access token is then a 5-part JWE instead of a 3-part signed JWT, so the script
+reports that it is opaque rather than decoding its payload.
+
 Manually, using a cookie jar as the client:
 
 ```bash
@@ -84,9 +106,9 @@ curl -s -c jar.txt -X POST 'http://localhost:8080/tokens?user=alice'; curl -s -L
 
 | File | Role |
 | --- | --- |
-| [TokenFactory.java](src/main/java/com/example/tokenfactory/TokenFactory.java) | Builds the claims and signs the 10s token via `JwtEncoder` |
+| [TokenFactory.java](src/main/java/com/example/tokenfactory/TokenFactory.java) | Signs the 10s token, then optionally encrypts it (nested JWT) |
 | [RefreshTokenStore.java](src/main/java/com/example/tokenfactory/RefreshTokenStore.java) | Issues and looks up opaque refresh tokens |
-| [JwtConfig.java](src/main/java/com/example/tokenfactory/JwtConfig.java) | RSA key pair, `JwtEncoder` and `JwtDecoder` beans |
+| [JwtConfig.java](src/main/java/com/example/tokenfactory/JwtConfig.java) | RSA signing pair, optional AES key, `JwtEncoder`/`JwtDecoder` beans |
 | [SecurityConfig.java](src/main/java/com/example/tokenfactory/SecurityConfig.java) | Cookie bearer resolver + 302-on-expiry entry point |
 | [Cookies.java](src/main/java/com/example/tokenfactory/Cookies.java) | Reads and writes the access/refresh cookies |
 | [TokenController.java](src/main/java/com/example/tokenfactory/TokenController.java) | `POST /tokens` — issues the token pair as cookies |

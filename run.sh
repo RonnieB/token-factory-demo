@@ -5,6 +5,10 @@
 #   2. call the protected endpoint while the token is fresh
 #   3. wait for the token to expire
 #   4. call again: the server answers 302 -> /refresh, mints a new token, 302 -> /me
+#
+# Pass `encrypt` as the first argument to encrypt the access token (a nested JWT):
+#   ./run.sh            -> signed JWT only
+#   ./run.sh encrypt    -> signed JWT wrapped in a compact "dir" JWE
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -13,6 +17,11 @@ BASE="http://localhost:$PORT"
 JAR="curl-cookies.txt"
 BUILD_LOG="build.log"
 
+ENCRYPT=false
+if [ "${1:-}" = "encrypt" ]; then
+  ENCRYPT=true
+fi
+
 echo "==> Building and running unit tests"
 mvn -q clean package | tee "$BUILD_LOG"
 
@@ -20,8 +29,8 @@ echo
 echo "==> The tests decoded and printed the signed token:"
 awk '/--- Signed JWT, decoded/{f=1} f{print} /^ *}$/{if(f)c++} c==2{exit}' "$BUILD_LOG"
 
-echo "==> Starting server on port $PORT"
-java -jar target/token-factory-demo-1.0.0.jar >server.log 2>&1 &
+echo "==> Starting server on port $PORT (token encryption: $ENCRYPT)"
+java -Ddemo.encrypt-tokens=$ENCRYPT -jar target/token-factory-demo-1.0.0.jar >server.log 2>&1 &
 SERVER_PID=$!
 trap 'kill $SERVER_PID 2>/dev/null || true; rm -f $JAR $BUILD_LOG' EXIT
 
@@ -31,14 +40,27 @@ for _ in $(seq 30); do
   sleep 1
 done
 
+if [ "$ENCRYPT" = true ]; then
+  echo
+  echo "==> On startup the server printed one sample encrypted token so you can see it is opaque:"
+  sed -n '/Encrypted access token/,/encrypted nested JWT/p' server.log
+fi
+
 echo "==> Issuing a token for user 'alice' (cookies saved to the jar)"
 curl -s -c "$JAR" -o /dev/null -X POST "$BASE/tokens?user=alice"
 echo "Access and refresh cookies stored."
 
-echo "==> Decoding the access token payload from the cookie"
 TOKEN=$(grep access_token "$JAR" | awk '{print $NF}')
-PAYLOAD=$(echo "$TOKEN" | cut -d. -f2)
-python3 -c "import base64,json,sys; s=sys.argv[1]; print(json.dumps(json.loads(base64.urlsafe_b64decode(s + '=' * (-len(s) % 4))), indent=2))" "$PAYLOAD"
+if [ "$ENCRYPT" = true ]; then
+  echo "==> The access token is an encrypted nested JWT (JWE), opaque to the client"
+  echo "Compact parts: $(echo "$TOKEN" | awk -F. '{print NF}') (a 'dir' JWE has 5; a plain signed JWT has 3)"
+  echo "Token length: ${#TOKEN} characters (dir encryption adds only header + IV + tag, no wrapped key)"
+  echo "Only the server, holding the AES key, can decrypt and read it."
+else
+  echo "==> Decoding the access token payload from the cookie"
+  PAYLOAD=$(echo "$TOKEN" | cut -d. -f2)
+  python3 -c "import base64,json,sys; s=sys.argv[1]; print(json.dumps(json.loads(base64.urlsafe_b64decode(s + '=' * (-len(s) % 4))), indent=2))" "$PAYLOAD"
+fi
 
 echo "==> Calling /me while the token is fresh (the server verifies its signature)"
 curl -s -b "$JAR" "$BASE/me"; echo
